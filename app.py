@@ -20,25 +20,41 @@ db = SQLAlchemy(app)
 
 # ================= MODELOS =================
 
-class Post(db.Model):
+class User(db.Model):
+    __tablename__ = "users"
+
     id = db.Column(db.String, primary_key=True)
-    autor = db.Column(db.String, nullable=False)
-    autor_id = db.Column(db.String, nullable=False)
+    username = db.Column(db.String, nullable=False)
+    apelido = db.Column(db.String, nullable=True)
+    foto = db.Column(db.String, nullable=True)  # avatar
+
+
+class Post(db.Model):
+    __tablename__ = "posts"
+
+    id = db.Column(db.String, primary_key=True)
+    autor_id = db.Column(db.String, db.ForeignKey("users.id"), nullable=False)
     texto = db.Column(db.Text, nullable=False)
+    imagem = db.Column(db.String, nullable=True)  # foto do post
     data = db.Column(db.String, nullable=False)
+
 
 class Comment(db.Model):
+    __tablename__ = "comments"
+
     id = db.Column(db.String, primary_key=True)
-    post_id = db.Column(db.String, nullable=False)
-    autor = db.Column(db.String, nullable=False)
-    autor_id = db.Column(db.String, nullable=False)
+    post_id = db.Column(db.String, db.ForeignKey("posts.id"), nullable=False)
+    autor_id = db.Column(db.String, db.ForeignKey("users.id"), nullable=False)
     texto = db.Column(db.Text, nullable=False)
     data = db.Column(db.String, nullable=False)
 
+
 class Like(db.Model):
+    __tablename__ = "likes"
+
     id = db.Column(db.String, primary_key=True)
-    post_id = db.Column(db.String, nullable=False)
-    user_id = db.Column(db.String, nullable=False)
+    post_id = db.Column(db.String, db.ForeignKey("posts.id"), nullable=False)
+    user_id = db.Column(db.String, db.ForeignKey("users.id"), nullable=False)
 
 # ================= CRIAR TABELAS =================
 with app.app_context():
@@ -52,17 +68,23 @@ def listar_posts():
     resultado = []
 
     for p in posts:
-        comentarios = Comment.query.filter_by(post_id=p.id).count()
+        user = User.query.filter_by(id=p.autor_id).first()
         likes = Like.query.filter_by(post_id=p.id).count()
+        comentarios = Comment.query.filter_by(post_id=p.id).count()
 
         resultado.append({
             "id": p.id,
-            "autor": p.autor,
-            "autor_id": p.autor_id,
             "texto": p.texto,
+            "imagem_post": p.imagem,
             "data": p.data,
             "likes": likes,
-            "comentarios": comentarios
+            "comentarios": comentarios,
+            "autor": {
+                "id": user.id,
+                "username": user.username,
+                "apelido": user.apelido,
+                "foto": user.foto
+            }
         })
 
     return jsonify(resultado)
@@ -74,9 +96,9 @@ def criar_post():
 
     post = Post(
         id=str(uuid.uuid4()),
-        autor=data["autor"],
         autor_id=data["autor_id"],
         texto=data["texto"],
+        imagem=data.get("imagem"),  # pode ser None
         data=datetime.now().strftime("%d/%m/%Y %H:%M")
     )
 
@@ -88,11 +110,10 @@ def criar_post():
 
 @app.route("/posts/<post_id>", methods=["DELETE"])
 def apagar_post(post_id):
-    Post.query.filter_by(id=post_id).delete()
     Comment.query.filter_by(post_id=post_id).delete()
     Like.query.filter_by(post_id=post_id).delete()
+    Post.query.filter_by(id=post_id).delete()
     db.session.commit()
-
     return jsonify({"status": "ok"})
 
 # ================= COMENTÁRIOS =================
@@ -100,29 +121,38 @@ def apagar_post(post_id):
 @app.route("/posts/<post_id>/comments", methods=["GET"])
 def listar_comentarios(post_id):
     comentarios = Comment.query.filter_by(post_id=post_id).all()
-    return jsonify([{
-        "id": c.id,
-        "autor": c.autor,
-        "autor_id": c.autor_id,
-        "texto": c.texto,
-        "data": c.data
-    } for c in comentarios])
+    resultado = []
+
+    for c in comentarios:
+        user = User.query.filter_by(id=c.autor_id).first()
+        resultado.append({
+            "id": c.id,
+            "texto": c.texto,
+            "data": c.data,
+            "autor": {
+                "id": user.id,
+                "username": user.username,
+                "apelido": user.apelido,
+                "foto": user.foto
+            }
+        })
+
+    return jsonify(resultado)
 
 
 @app.route("/posts/<post_id>/comments", methods=["POST"])
 def criar_comentario(post_id):
     data = request.get_json()
 
-    c = Comment(
+    comentario = Comment(
         id=str(uuid.uuid4()),
         post_id=post_id,
-        autor=data["autor"],
         autor_id=data["autor_id"],
         texto=data["texto"],
         data=datetime.now().strftime("%d/%m/%Y %H:%M")
     )
 
-    db.session.add(c)
+    db.session.add(comentario)
     db.session.commit()
 
     return jsonify({"status": "ok"})

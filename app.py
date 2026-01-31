@@ -66,7 +66,7 @@ def garantir_user(user_id):
     if not user:
         user = User(
             id=user_id,
-            username="",
+            username="Eu",
             apelido="",
             foto=None
         )
